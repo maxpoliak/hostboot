@@ -329,6 +329,7 @@ void*    call_host_disable_vddr( void *io_pArgs )
 {
     errlHndl_t l_err = NULL;
     IStepError l_StepError;
+    uint8_t i;
 
     TRACDCOMP(ISTEPS_TRACE::g_trac_isteps_trace,
               ENTER_MRK"call_host_disable_vddr");
@@ -346,6 +347,12 @@ void*    call_host_disable_vddr( void *io_pArgs )
 
         errlCommit( l_err, HWPF_COMP_ID );
 
+    }
+
+    //Delay 2 seconds for Centaure 1.2V ready on 128 DIMM system.
+    for (i = 0; i < 1; ++i)
+    {
+        fapiDelay(1000 * 1000000, 10000); // 1,000,000 ns = 1ms, 1000*1ms
     }
 
     TRACDCOMP( ISTEPS_TRACE::g_trac_isteps_trace,

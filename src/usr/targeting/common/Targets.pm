@@ -744,7 +744,7 @@ sub processMcs
                         $self->setAttribute($dimm,"MBA_PORT",$port_num);
                         $self->setAttribute($dimm,"MBA_DIMM",$dimm_num);
 
-                        my $aff_pos=16*$proc+$mcs*$self->{MAX_MCS}+4*$mba+
+                        my $aff_pos=64*$proc+$mcs*$self->{MAX_MCS}+4*$mba+
                                     2*$port_num+$dimm_num;
                         $self->setAttribute($dimm, "AFFINITY_PATH",
                             $parent_affinity

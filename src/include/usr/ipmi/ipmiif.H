@@ -258,7 +258,7 @@ namespace IPMI
 
     //AMI-specific storage messages
     inline const command_t partial_add_esel(void)
-    { return std::make_pair(NETFUN_AMI, 0xf0); }
+    { return std::make_pair(NETFUN_IBM, 0xf0); }
 
     // event messages
     inline const command_t platform_event(void)
