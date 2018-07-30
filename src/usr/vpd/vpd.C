@@ -37,7 +37,11 @@
 #include "pvpd.H"
 #include "spd.H"
 #include "ipvpd.H"
+#include "valid_vpd.H"
 #include <map>
+
+// print on console
+#include <console/consoleif.H>
 
 // ----------------------------------------------
 // Trace - defined in vpd_common
@@ -734,6 +738,21 @@ errlHndl_t ensureCacheIsInSync ( TARGETING::Target * i_target )
     return l_err;
 }
 
+// ------------------------------------------------------------------
+// validVpdSpdAttrVendor
+// ------------------------------------------------------------------
+errlHndl_t validateVpdSpdAttrVendor( )
+{
+    errlHndl_t      l_err = NULL;
+    ValidatorVPD    attrVendorValidator;
+
+    TRACSSCOMP( g_trac_vpd, ENTER_MRK"validVpdSpdAttrVendor() " );
+
+    l_err = attrVendorValidator.validateVpdSpd().unsupportedToGard();
+
+    TRACSSCOMP( g_trac_vpd, EXIT_MRK"validVpdSpdAttrVendor() " );
+    return  l_err;
+}
 
 // ------------------------------------------------------------------
 // invalidatePnorCache

@@ -186,6 +186,20 @@ void* host_discover_targets( void *io_pArgs )
 #endif
     }
 
+    errl = VPD::validateVpdSpdAttrVendor();
+    if ( errl )
+    {
+        IStepError l_stepError;
+        TRACFCOMP(ISTEPS_TRACE::g_trac_isteps_trace,
+                 "ERROR 0x%.8X: validateVpdSpdAttrVendor() returns error",
+                  errl->reasonCode());
+
+        //Create IStep error log and cross reference error that occurred
+        l_stepError.addErrorDetails(errl);
+
+        // Commit Error
+        errlCommit(errl, HWPF_COMP_ID);
+    }
     // Put out some helpful messages that show which targets we actually found
     std::map<TARGETING::TYPE,uint64_t> l_presData;
     std::map<TARGETING::TYPE,uint64_t> Present_Dimm_P0; //for dimms on CPU P0

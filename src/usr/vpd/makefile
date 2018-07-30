@@ -30,6 +30,7 @@ include vpd.mk
 
 #include unique objects
 OBJS += vpd.o
+OBJS += valid_vpd.o
 OBJS += dimmPres.o
 OBJS += rtvpd_load.o
 

@@ -97,6 +97,14 @@ namespace VPD
     errlHndl_t ensureCacheIsInSync ( TARGETING::Target * i_target );
 
     /**
+     * @brief This function checks the vendor's VPD attributes for a specific
+     *        target.
+     * @return errlHndl_t - NULL if successful, otherwise a pointer to the
+     *      error log.
+     */
+    errlHndl_t validateVpdSpdAttrVendor( );
+
+    /**
      * @brief This function invalidates the VPD data in the PNOR cache.
      * @param[in] i_target - Target device
      * @return errlHndl_t - NULL if successful, otherwise a pointer to the
