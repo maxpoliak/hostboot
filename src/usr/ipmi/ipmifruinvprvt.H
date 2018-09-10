@@ -55,7 +55,6 @@ namespace IPMIFRUINV
 
 };
 
-
 //Parent Class Contains all common functions to build up, format,
 //  and send IPMI Fru Inventory Record Data
 //The parent Class also defines pure virtual functions so the child
@@ -319,6 +318,12 @@ class isdimmIpmiFruInv : public IpmiFruInv
 
   public:
 
+    typedef struct
+    {
+        uint16_t     key;
+        const char * identifier;
+    } JedecSpdParams;
+
      /**
      * @brief Constructor
      *
@@ -358,6 +363,27 @@ class isdimmIpmiFruInv : public IpmiFruInv
     errlHndl_t buildMultiRecordInfoArea(std::vector<uint8_t> &io_data);
 
   private:
+    enum
+    {
+        DENSITY_RECORD_SIZE = 0x1,
+        JEDEC_DENSITY_MASK = 0x7,
+        JEDEC_DENSITY_MIN_VALUE = 256,
+        JEDEC_DENSITY_MIN_VALUE_MB = JEDEC_DENSITY_MIN_VALUE/8,
+
+        MEMORY_BUS_WIDTH_PRI_RECORD_SIZE = 0x1,
+        JEDEC_MEMORY_BUS_WIDTH_PRI_MASK = 0x3,
+        JEDEC_MEMORY_BUS_WIDTH_PRI_MIN_VALUE = 8,
+
+        DRAM_WIDTH_PRI_RECORD_SIZE = 0x1,
+        JEDEC_DRAM_WIDTH_MASK = 0x3,
+        JEDEC_DRAM_WIDTH_MIN_VALUE = 4,
+
+        RANKS_RECORD_SIZE = 0x1,
+        JEDEC_RANKS_MASK = 0x3,
+        JEDEC_RANKS_MIN_VALUE = 1,
+
+        CAPACITY_STRING_SIZE = 10,
+    };
 
     /**
      * @brief Adds the specified VPD data to the data to build up a given
@@ -366,11 +392,65 @@ class isdimmIpmiFruInv : public IpmiFruInv
      * @param[in] keyword, Indicates where in the VPD to get more data
      * @param[in] ascii, Indicates if VPD field is in ascii format or not
      */
-    errlHndl_t addVpdData(std::vector<uint8_t> &io_data,
+    errlHndl_t addSpdData(std::vector<uint8_t> &io_data,
                           uint8_t i_keyword,
                           bool i_ascii=false);
 
+    /**
+     * @brief Adds the specified VPD data as a string in ASCII format
+     *        to build up record
+     *
+     * @param[in/out] data, The container with record data
+     * @param[in] keyword, Indicates where in the VPD to get more data
+     *
+     * @return errlHndl_t - NULL if successful, otherwise a pointer to the
+     *       error log.
+     *
+     * @note This function does not add the size and type of the record to
+     *       the io_data container. These actions must be done in the
+     *       function that it calls.
+     */
+    errlHndl_t addSpdAsciiInfoData(std::vector<uint8_t> &io_data,
+                                   uint8_t i_keyword);
+
+    /**
+     * @brief Adds the Module Capacity SDP-data as a string in ASCII format
+     *        to build up record
+     *
+     * @param[in/out] data, The container with record data
+     *
+     * @return errlHndl_t - NULL if successful, otherwise a pointer to the
+     *       error log.
+     *
+     * @note This function does not add the size and type of the record to
+     *       the io_data container. These actions must be done in the
+     *       function that it calls.
+     */
+    errlHndl_t addSpdModCapacityInfo(std::vector<uint8_t> &io_data);
+
+    /**
+     * @brief Adds the DIMMs memory product name in ASCII format
+     *        to build up record
+     *
+     * @param[in/out] data, The container with record data
+     *
+     * @return errlHndl_t - NULL if successful, otherwise a pointer to the
+     *       error log.
+     */
+    errlHndl_t addSpdProductName(std::vector<uint8_t> &io_data);
+
+    /**
+     * @brief Adds the DIMMs memory product name in ASCII format
+     *        to build up record
+     *
+     * @param[in/out] data, The container with record data
+     *
+     * @return errlHndl_t - NULL if successful, otherwise a pointer to the
+     *       error log.
+     */
+    errlHndl_t addSpdManufacturerName(std::vector<uint8_t> &io_data);    
 };
+
 
 //Child class for building up Processor Fru Inventory Record Data
 class procIpmiFruInv : public IpmiFruInv

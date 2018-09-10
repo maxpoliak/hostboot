@@ -380,6 +380,79 @@ void IpmiFruInv::setAreaSize(std::vector<uint8_t> &io_data, uint8_t i_offset)
 }
 
 //##############################################################################
+static const char * s_unknownSpdParm = "Unknown";
+
+const isdimmIpmiFruInv::JedecSpdParams manufacturerId[] = {
+    { 0x8001, "AMD" },
+    { 0x802C, "Micron Technology" },
+    { 0x80CE, "Samsung Electronics" },
+    { 0x014F, "Transcend Information" },
+    { 0x859B, "Crucial Technology" },
+    { 0x8089, "Intel" },
+    { 0x8004, "Fujitsu" },
+    { 0x80A4, "IBM" },
+    { 0x8089, "Intel" },
+    { 0x80AD, "SK Hynix" },
+    { 0x8054, "Hewlett-Packard" },
+    { 0x8096, "LG Semi" },
+    { 0x0198, "Kingston" },
+    { 0x017A, "Apacer Technology" },
+    { 0x0230, "Corsair" },
+    { 0x0245, "Siemens AG" },
+    { 0x04F1, "Toshiba Corporation" },
+    { 0x0831, "Baikal Electronics" },
+    { 0x8983, "Hewlett Packard Enterprise" },
+    { 0xFFFF, s_unknownSpdParm }
+};
+
+const isdimmIpmiFruInv::JedecSpdParams memType[] = {
+    { 0x0B, "DDR3" },
+    { 0x0C, "DDR4" },
+    { 0x0E, "DDR4E" },
+    { 0x0F, "LPDDR3" },
+    { 0x10, "LPDDR4" },
+    { 0xFFFF, s_unknownSpdParm }
+};
+
+const isdimmIpmiFruInv::JedecSpdParams modType[] = {
+    { 0x01, "RDIMM" },
+    { 0x02, "UDIMM" },
+    { 0x03, "SODIMM" },
+    { 0x04, "LRDIMM" },
+    { 0x05, "MINI RDIMM" },
+    { 0x06, "MINI UDIMM" },
+    { 0x08, "SORDIMM 72b"},
+    { 0x09, "SOUDIMM 72b" },
+    { 0x0C, "SODIMM 16b" },
+    { 0x0D, "SODIMM 32b" },
+    { 0xFFFF, s_unknownSpdParm }
+};
+
+const isdimmIpmiFruInv::JedecSpdParams busWidthBits[] = {
+    { 0x00, "8-bit"  },
+    { 0x01, "16-bit" },
+    { 0x02, "32-bit" },
+    { 0x03, "64-bit" },
+    { 0xFFFF, s_unknownSpdParm }
+};
+
+const isdimmIpmiFruInv::JedecSpdParams isECC[] = {
+    { 0x00, " "},
+    { 0x01, "ECC"},
+    { 0xFFFF, " "}
+};
+
+const isdimmIpmiFruInv::JedecSpdParams freqTckMin[] =
+{
+    { 0x0A, "DDR4-1600" },
+    { 0x09, "DDR4-1866" },
+    { 0x08, "DDR4-2133" },
+    { 0x07, "DDR4-2400" },
+    { 0x06, "DDR4-2666" },
+    { 0x05, "DDR4-3200" },
+    { 0xFFFF, s_unknownSpdParm },
+};
+
 isdimmIpmiFruInv::isdimmIpmiFruInv( TARGETING::TargetHandle_t i_target )
     :IpmiFruInv(i_target)
 {
@@ -418,21 +491,20 @@ errlHndl_t isdimmIpmiFruInv::buildProductInfoArea(std::vector<uint8_t> &io_data)
     do {
         //Set formatting data that goes at the beginning of the record
         preFormatProcessing(io_data, true);
-
-        //Set Manufacturer's Name - Use JEDEC standard MFG ID
-        l_errl = addVpdData(io_data, SPD::MODULE_MANUFACTURER_ID);
+        //Set Manufacturer's Name in ASCII format. Use JEDEC standard MFG ID
+        l_errl = addSpdManufacturerName(io_data);
         if (l_errl) { break; }
-        //Set Product Name - Use Basic SPD Memory Type
-        l_errl = addVpdData(io_data, SPD::BASIC_MEMORY_TYPE);
+        //Set Product Name in ASCII format
+        l_errl = addSpdProductName(io_data);
         if (l_errl) { break; }
         //Set Product Part/Model Number
-        l_errl = addVpdData(io_data, SPD::MODULE_PART_NUMBER, true);
+        l_errl = addSpdData(io_data, SPD::MODULE_PART_NUMBER, true);
         if (l_errl) { break; }
         //Set Product Version
-        l_errl = addVpdData(io_data, SPD::MODULE_REVISION_CODE);
+        l_errl = addSpdData(io_data, SPD::MODULE_REVISION_CODE);
         if (l_errl) { break; }
         //Set Product Serial Number
-        l_errl = addVpdData(io_data, SPD::MODULE_SERIAL_NUMBER);
+        l_errl = addSpdData(io_data, SPD::MODULE_SERIAL_NUMBER);
         if (l_errl) { break; }
 
         //Add Asset Tag
@@ -451,64 +523,342 @@ errlHndl_t isdimmIpmiFruInv::buildProductInfoArea(std::vector<uint8_t> &io_data)
     if (l_errl)
     {
         TRACFCOMP(g_trac_ipmi,"isdimIpmiFruInv::buildProductInfoArea - Errors "
-                              "collecting product info data from VPD");
+                              "collecting product info data from SPD");
     }
 
     return l_errl;
 }
 
-errlHndl_t isdimmIpmiFruInv::addVpdData(std::vector<uint8_t> &io_data,
-                                     uint8_t i_keyword,
-                                     bool i_ascii)
+/**
+ * @brief Returns a pointer to a list of string identifiers that
+ *        corresponds to the type of VPD keyword.
+ * @param[in] keyword, Indicates where in the VPD to get more data
+ * @return JedecSpdParams* - pointer is a list of string identifiers
+ */
+inline static
+const isdimmIpmiFruInv::JedecSpdParams * getJedecSpdParams( uint8_t i_keyword )
 {
-    size_t     l_vpdSize = 0;
+    const isdimmIpmiFruInv::JedecSpdParams * jedecRec;
+    switch (i_keyword)
+    {
+    case SPD::MODULE_MANUFACTURER_ID:
+        jedecRec = manufacturerId;
+        break;
+
+    case SPD::BASIC_MEMORY_TYPE:
+        jedecRec = memType;
+        break;
+
+    case SPD::MODULE_TYPE:
+        jedecRec = modType;
+        break;
+
+    case SPD::MODULE_MEMORY_BUS_WIDTH_PRI:
+        jedecRec = busWidthBits;
+        break;
+
+    case SPD::MODULE_MEMORY_BUS_WIDTH_EXT:
+        jedecRec = isECC;
+        break;
+
+     case SPD::TCK_MIN:
+        jedecRec = freqTckMin;
+        break;
+
+    default:
+        return  NULL;
+    }
+    return  jedecRec;
+}
+
+errlHndl_t isdimmIpmiFruInv::addSpdModCapacityInfo(std::vector<uint8_t> &io_data)
+{
+    errlHndl_t l_errl = NULL;
+    size_t     l_recSpdSize, l_offset;
+    uint32_t   i_density;
+    uint8_t    i_busWidth, i_devWidth, i_modRanks;
+    uint64_t   l_result;
+    uint16_t   i_keyword;
+    uint8_t    i_recSpdBuff = 0;
+    char       sz_modCapacity[CAPACITY_STRING_SIZE] = {0};
+
+    do
+    {
+        // Get Density
+        l_recSpdSize = DENSITY_RECORD_SIZE;
+        i_keyword = SPD::DENSITY;
+        l_errl = deviceRead(iv_target,
+                            &i_recSpdBuff,
+                            l_recSpdSize,
+                            DEVICE_SPD_ADDRESS(i_keyword));
+        if ( l_errl ) { return  l_errl; }
+
+        if (i_recSpdBuff > JEDEC_DENSITY_MASK)
+            break;
+        // JEDEC Standard No. 21-C. Page 4.1.2.12 – 9
+        // density = 256 Mb* (2 ^ i_recSpdBuff) / 8 =
+        // = 32 MB * (2 ^ i_recSpdBuff)
+        i_density = JEDEC_DENSITY_MIN_VALUE_MB << i_recSpdBuff;
+
+        // Сalculate the Primary Bus Width
+        l_recSpdSize = MEMORY_BUS_WIDTH_PRI_RECORD_SIZE;
+        i_keyword = SPD::MODULE_MEMORY_BUS_WIDTH_PRI;
+        l_errl = deviceRead(iv_target,
+                            &i_recSpdBuff,
+                            l_recSpdSize,
+                            DEVICE_SPD_ADDRESS(i_keyword));
+        if ( l_errl )  { return  l_errl; }
+
+        // JEDEC Standard No. 21-C. Page 4.1.2.12 – 15
+        // b00 - 8 bits ... b11 - 64 bits. All others reserved
+        if (i_recSpdBuff > JEDEC_MEMORY_BUS_WIDTH_PRI_MASK)
+            break;
+        i_busWidth = JEDEC_MEMORY_BUS_WIDTH_PRI_MIN_VALUE << i_recSpdBuff;
+
+        // Сalculate the SDRAM Device Width
+        l_recSpdSize = DRAM_WIDTH_PRI_RECORD_SIZE;
+        i_keyword = SPD::MODULE_DRAM_WIDTH;
+        l_errl = deviceRead(iv_target,
+                            &i_recSpdBuff,
+                            l_recSpdSize,
+                            DEVICE_SPD_ADDRESS(i_keyword));
+        if ( l_errl )  { return  l_errl; }
+
+        // JEDEC Standard No. 21-C. Page 4.1.2.12 – 14
+        // b00 - 4 bits ... b11 - 32 bits. All others reserved
+        if (i_recSpdBuff > JEDEC_DRAM_WIDTH_MASK)
+            break;
+        i_devWidth = JEDEC_DRAM_WIDTH_MIN_VALUE << i_recSpdBuff;
+
+        // Сalculate the Number of Package Ranks per DIMM
+        l_recSpdSize = RANKS_RECORD_SIZE;
+        i_keyword = SPD::MODULE_RANKS;
+        l_errl = deviceRead(iv_target,
+                            &i_recSpdBuff,
+                            l_recSpdSize,
+                            DEVICE_SPD_ADDRESS(i_keyword));
+        if ( l_errl )  { return  l_errl; }
+
+        // JEDEC Standard No. 21-C. Page 4.1.2.12 – 14
+        // b00 - 1 package rank ... b11 - 4 package ranks. All others reserved
+        if (i_recSpdBuff > JEDEC_RANKS_MASK)
+            break;
+        i_modRanks = JEDEC_RANKS_MIN_VALUE + i_recSpdBuff;
+
+        // Calculate the Module Capacity (in Gbytes >> 10) according to the formula
+        // from the JEDEC Standard specification No. 21-C. Page 4.1.2.12 – 15
+        l_result = (i_density * i_busWidth / i_devWidth * i_modRanks) >> 10;
+        snprintf(sz_modCapacity, sizeof(sz_modCapacity), "%dGB ", l_result );
+        l_recSpdSize = strlen(sz_modCapacity);
+
+        // Add the information string to build up FRU-record
+        l_offset = io_data.size();
+        io_data.resize(l_offset + l_recSpdSize);
+        memcpy(&io_data[l_offset], sz_modCapacity, l_recSpdSize);
+
+        return  l_errl;
+
+    } while(false);
+
+    // Incorrect record value. In this case, the error does
+    // not return and the process of creating the FRU records
+    // continues
+    TRACFCOMP(g_trac_ipmi,
+              "isdimIpmiFruInv::addSpdModCapacityInfo - Error. "
+              "Incorrect record data in SPD: type of record = 0x%X, "
+              "data = 0x%X",
+              i_keyword, i_recSpdBuff);
+
+    return  NULL;
+}
+
+errlHndl_t isdimmIpmiFruInv::addSpdAsciiInfoData( std::vector<uint8_t> &io_data,
+                                                        uint8_t i_keyword )
+{
+    errlHndl_t   l_errl = NULL;
+    uint16_t     i_readSpdData = 0;
+    size_t       l_recFruSize = 0;
+    const char*  s_infoRecord = s_unknownSpdParm;
+    size_t       l_offset;
+    const JedecSpdParams * jedecInfoRec;
+
+    do
+    {
+        jedecInfoRec = getJedecSpdParams(i_keyword);
+        if (jedecInfoRec == NULL)  { break; }
+
+        // Get size of the SPD-record
+        l_errl = deviceRead(iv_target,
+                            NULL,
+                            l_recFruSize,
+                            DEVICE_SPD_ADDRESS(i_keyword));
+        if (l_errl)  { break; }
+
+        // The size of the entry must match the size of the JedecSpdParams.key
+        if (l_recFruSize > sizeof(i_readSpdData))
+        {
+            TRACFCOMP(g_trac_ipmi,
+                      "isdimmIpmiFruInv::addSpdAsciiInfoData - "
+                      "The record size is larger than the key size");
+            break;
+        }
+
+        // Get key from SPD-record
+        l_errl = deviceRead(iv_target,
+                            &i_readSpdData,
+                            l_recFruSize,
+                            DEVICE_SPD_ADDRESS(i_keyword));
+        if (l_errl) { break; }
+        // Find the entry with this key        
+        i_readSpdData = le16toh(i_readSpdData);
+        for (l_offset = 0;
+             jedecInfoRec[l_offset].key != 0xFFFF;
+             ++l_offset)
+        {
+            if (jedecInfoRec[l_offset].key == i_readSpdData)
+            {
+                s_infoRecord = jedecInfoRec[l_offset].identifier;
+                break;
+            }
+        }
+
+    } while(false);
+
+    if (l_errl)
+    {
+        TRACFCOMP(g_trac_ipmi,
+                  "isdimmIpmiFruInv::addSpdAsciiInfoData - "
+                  "Error while reading SPD keyword size for keyword 0x%x",
+                  i_keyword);
+        return  l_errl;
+    }
+
+    // Copy info string to io_data
+    l_recFruSize = strlen(s_infoRecord);
+    l_offset = io_data.size();
+    io_data.resize(l_offset + l_recFruSize);
+    memcpy(&io_data[l_offset], s_infoRecord, l_recFruSize);
+    return  NULL;
+}
+
+errlHndl_t isdimmIpmiFruInv::addSpdProductName(std::vector<uint8_t> &io_data)
+{
+    errlHndl_t l_errl = NULL;
+    size_t     l_offset, l_productNameSize;
+
+    // Reserve space for the size of the record
+    l_offset = io_data.size();
+    io_data.resize(l_offset + 1);
+
+    // Set memory type Id in ASCII string
+    l_errl = addSpdAsciiInfoData(io_data, SPD::BASIC_MEMORY_TYPE);
+    if (l_errl) { return  l_errl; }
+    io_data.push_back(' ');
+
+    // Set module type Id in ASCII string
+    l_errl = addSpdAsciiInfoData(io_data, SPD::MODULE_TYPE);
+    if (l_errl) { return  l_errl; }
+    io_data.push_back(' ');
+
+    // Set DDR4 Module Capacity size in ASCII string (in GB)
+    l_errl = addSpdModCapacityInfo(io_data);
+    if (l_errl) { return  l_errl; }
+
+    // Set frequency
+    l_errl = addSpdAsciiInfoData(io_data, SPD::TCK_MIN);
+    if (l_errl) { return  l_errl; }
+    io_data.push_back(' ');
+
+    // Set primary bus width (in bits)
+    l_errl = addSpdAsciiInfoData(io_data,
+                                 SPD::MODULE_MEMORY_BUS_WIDTH_PRI);
+    if (l_errl) { return  l_errl; }
+    io_data.push_back(' ');
+
+    // Set ECC information
+    l_errl = addSpdAsciiInfoData(io_data,
+                                 SPD::MODULE_MEMORY_BUS_WIDTH_EXT);
+    if (l_errl) { return  l_errl; }
+
+    // Set size of FRU-record for ascii type
+    l_productNameSize = io_data.size() - (l_offset + 1);
+    io_data.at(l_offset) = l_productNameSize + IPMIFRUINV::TYPELENGTH_BYTE_ASCII;
+
+    return  l_errl;
+}
+
+errlHndl_t isdimmIpmiFruInv::addSpdManufacturerName(std::vector<uint8_t> &io_data)
+{
+    errlHndl_t l_errl = NULL;
+    size_t     l_offset, ManufacturerName;
+
+    // Reserve space for the size of the record
+    l_offset = io_data.size();
+    io_data.resize(l_offset + 1);
+
+    // Set Manufacturer Id in ASCII string
+    l_errl = addSpdAsciiInfoData(io_data, SPD::MODULE_MANUFACTURER_ID);
+    if (l_errl) { return  l_errl; }
+
+    // Set size for ascii type FRU-record
+    ManufacturerName = io_data.size() - (l_offset + 1);
+    io_data.at(l_offset) = ManufacturerName + IPMIFRUINV::TYPELENGTH_BYTE_ASCII;
+
+    return  l_errl;
+}
+
+errlHndl_t isdimmIpmiFruInv::addSpdData(std::vector<uint8_t> &io_data,
+                                        uint8_t i_keyword,
+                                        bool i_ascii)
+{
+    size_t     l_spdSize = 0;
     errlHndl_t l_errl = NULL;
 
     do {
         //First get size with NULL call:
         l_errl = deviceRead(iv_target,
                                        NULL,
-                                       l_vpdSize,
+                                       l_spdSize,
                                        DEVICE_SPD_ADDRESS(i_keyword));
 
         if (l_errl)
         {
-            TRACFCOMP(g_trac_ipmi,"isdimmIpmiFruInv::addVpdData - "
+            TRACFCOMP(g_trac_ipmi,"isdimmIpmiFruInv::addSpdData - "
                       "Error while reading SPD keyword size for keyword 0x%x",
                       i_keyword);
             break;
         }
 
         //Assert if vpd field is too large to fit in IPMI fru inventory format
-        assert(l_vpdSize < IPMIFRUINV::TYPELENGTH_BYTE_ASCII);
+        assert(l_spdSize < IPMIFRUINV::TYPELENGTH_BYTE_ASCII);
 
-        if (l_vpdSize > 0)
+        if (l_spdSize > 0)
         {
             //Determine how big data is and expand it to handle the soon to
             //be read VPD data
             uint8_t l_offset = io_data.size();
-            io_data.resize(l_offset + 1 + l_vpdSize);
+            io_data.resize(l_offset + 1 + l_spdSize);
 
             //Add on the data to the type/length byte indicating it is ascii
             // otherwise leave it as binary
             if (i_ascii)
             {
-                io_data.at(l_offset) = l_vpdSize
+                io_data.at(l_offset) = l_spdSize
                                        + IPMIFRUINV::TYPELENGTH_BYTE_ASCII;
             }
             else
             {
-                io_data.at(l_offset) = l_vpdSize;
+                io_data.at(l_offset) = l_spdSize;
             }
             l_offset += 1;
 
             //Read the VPD data directly into fru inventory data buffer
-            l_errl = deviceRead(iv_target,&io_data[l_offset], l_vpdSize,
+            l_errl = deviceRead(iv_target,&io_data[l_offset], l_spdSize,
                        DEVICE_SPD_ADDRESS(i_keyword));
         }
         else
         {
-            TRACFCOMP(g_trac_ipmi,"isdimmIpmiFruInv::addVpdData - "
+            TRACFCOMP(g_trac_ipmi,"isdimmIpmiFruInv::addSpdData - "
                       " No size returned for SPD keyword");
         }
 
@@ -516,7 +866,7 @@ errlHndl_t isdimmIpmiFruInv::addVpdData(std::vector<uint8_t> &io_data,
 
     if (l_errl)
     {
-        TRACFCOMP(g_trac_ipmi, "addVpdData - Error acquiring data from Vpd.");
+        TRACFCOMP(g_trac_ipmi, "addVpdData - Error acquiring data from SPD.");
     }
 
     return l_errl;
